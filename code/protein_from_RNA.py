@@ -1,7 +1,7 @@
 import numpy as np
 
 def get_RNA_params(topo, p, alpha_mu=2, alpha_sd=1, beta_mu=2, beta_sd=0.5, gamma_mu=0.5, gamma_sd=0.5, random_seed=0):
-    ## p: no. genes
+    ## p: No. genes
     
     np.random.seed(random_seed)
     
@@ -10,13 +10,14 @@ def get_RNA_params(topo, p, alpha_mu=2, alpha_sd=1, beta_mu=2, beta_sd=0.5, gamm
     theta[:,:n_states] = np.random.lognormal(alpha_mu, alpha_sd, size=(p, n_states))
     theta[:,-2] = np.random.lognormal(beta_mu, beta_sd, size=p)
     theta[:,-1] = np.random.lognormal(gamma_mu, gamma_sd, size=p)
-    theta[:,:n_states]/=theta[:,-2, None] # Normalize transcription rates by splicing rate (get_Y() assumes a = alpha/beta) 
+    theta[:,:n_states] /= theta[:,-2, None] # Normalize transcription rates by splicing rate (get_Y() assumes a = alpha/beta)
+    # theta[:,0] /= theta[:,-2] # Divide state 0 transcription rate by splicing rate (again) – assuming steady-state
     
     return theta
         
 def get_protein_params(p, transl_rate_mu=5, transl_rate_sd=1, deg_rate_mu=.015, deg_rate_sd=1.5, 
                        transl_rate_per_state=False, topo=None, random_seed=0):
-    ## p: no. genes
+    ## p: No. genes
     
     np.random.seed(random_seed)
     
@@ -33,10 +34,10 @@ def get_protein_params(p, transl_rate_mu=5, transl_rate_sd=1, deg_rate_mu=.015, 
 
 def simulate_RNA(topo, tau, theta, n, rd_mu=None, rd_var=None, random_seed=0):
     ## theta: RNA params
-    ## n: no. cells
-    ## p: no. genes
-    ## rd_mu: read depth mean for beta distribution
-    ## rd_var: read depth variance for beta distribution
+    ## n: No. cells
+    ## p: No. genes
+    ## rd_mu: Read depth mean for beta distribution
+    ## rd_var: Read depth variance for beta distribution
     
     np.random.seed(random_seed)
     
@@ -79,8 +80,8 @@ def simulate_protein_from_RNA(Y, topo, true_t, true_l, phi, random_seed=0):
     n = Y.shape[0] // L # No. cells per lineage
     p = Y.shape[1] # No. genes
     
-    y0 = Y[0, :, 1] # RNA levels per gene at state 0
-    ss_rate = (phi[:,0] / phi[:,-1]) # Steady-state protein production rate
+    y0 = Y[0, :, 1] # RNA levels at state 0
+    ss_rate = phi[:,0] / phi[:,-1] # Steady-state protein production rate
     p0 = ss_rate * y0 # Initial protein abundance assuming steady-state
     
     # Protein production paramters:
