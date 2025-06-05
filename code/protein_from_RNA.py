@@ -10,7 +10,7 @@ def get_RNA_params(topo, p, alpha_mu=2, alpha_sd=1, beta_mu=2, beta_sd=0.5, gamm
     theta[:,:n_states] = np.random.lognormal(alpha_mu, alpha_sd, size=(p, n_states))
     theta[:,-2] = np.random.lognormal(beta_mu, beta_sd, size=p)
     theta[:,-1] = np.random.lognormal(gamma_mu, gamma_sd, size=p)
-    theta[:,:n_states]/=theta[:,-2] # Normalize transcription rates by splicing rate (get_Y() assumes a = alpha/beta) 
+    theta[:,:n_states]/=theta[:,-2, None] # Normalize transcription rates by splicing rate (get_Y() assumes a = alpha/beta) 
     
     return theta
         
