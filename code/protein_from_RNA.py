@@ -33,6 +33,7 @@ def get_protein_params(p, transl_rate_mu=5, transl_rate_sd=1, deg_rate_mu=.015, 
     return phi
 
 def simulate_RNA(topo, tau, theta, n, rd_mu=None, rd_var=None, random_seed=0):
+    ## Source: https://github.com/pachterlab/FGP_2024
     ## theta: RNA params
     ## n: No. cells
     ## p: No. genes
@@ -60,7 +61,6 @@ def simulate_RNA(topo, tau, theta, n, rd_mu=None, rd_var=None, random_seed=0):
         a = (1-rd_mu)/rd_var - rd_mu
         b = (1/rd_mu-1)*a
         rd = np.random.beta(a=a, b=b, size=n*L)
-        
     else:
         rd_mu = 1
         rd = np.ones(n*L)
@@ -92,8 +92,9 @@ def simulate_protein_from_RNA(Y, topo, true_t, true_l, phi, random_seed=0):
     
     for l in range(L):
         t_l = true_t[true_l == l].reshape((-1, 1)) # Time points/cells in lineage l     
-        y_l = Y[l*n:(l+1)*n, :, 1] # Spliced RNAs from cells in lineage l
-        p_l = p0 * np.exp(-deg_rate * t_l) # Pre-existing protein that has not yet degraded for each cell in lineage l
+        y_l = Y[l*n:(l+1)*n, :, 1] # Spliced RNAs for lineage l
+        
+        p_l = p0 * np.exp(-deg_rate * t_l) # Pre-existing protein that has not yet degraded
 
         t_diff = t_l - t_l.T # Rows = target time; columns = past times; e.g. t_diff[m, i] = time difference between t_m and t_i 
         decay_matrix = np.exp(-t_diff[:, :, None] * deg_rate) # Decay_matrix[m, i, p] = decay factor for protein abundance at t_m from RNA available at t_i for gene p
@@ -107,7 +108,6 @@ def simulate_protein_from_RNA(Y, topo, true_t, true_l, phi, random_seed=0):
     P_observed = np.random.poisson(P)
         
     return P_observed, P
-
 
 def get_Y(theta, t, tau):
     ## Source: https://github.com/pachterlab/FGP_2024
