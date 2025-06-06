@@ -2,6 +2,9 @@ import numpy as np
 
 def get_RNA_params(topo, p, alpha_mu=2, alpha_sd=1, beta_mu=2, beta_sd=0.5, gamma_mu=0.5, gamma_sd=0.5, random_seed=0):
     ## p: No. genes
+    ## alpha_mu: Transcription rate mean for lognormal distribution
+    ## beta_mu: Splicing rate mean " " "
+    ## gamma_mu: RNA degradation rate mean " " "
     
     np.random.seed(random_seed)
     
@@ -11,13 +14,16 @@ def get_RNA_params(topo, p, alpha_mu=2, alpha_sd=1, beta_mu=2, beta_sd=0.5, gamm
     theta[:,-2] = np.random.lognormal(beta_mu, beta_sd, size=p)
     theta[:,-1] = np.random.lognormal(gamma_mu, gamma_sd, size=p)
     theta[:,:n_states] /= theta[:,-2, None] # Normalize transcription rates by splicing rate (get_Y() assumes a = alpha/beta)
-    # theta[:,0] /= theta[:,-2] # Divide state 0 transcription rate by splicing rate (again) – assuming steady-state
     
     return theta
         
 def get_protein_params(p, transl_rate_mu=5, transl_rate_sd=1, deg_rate_mu=.015, deg_rate_sd=1.5, 
                        transl_rate_per_state=False, topo=None, random_seed=0):
     ## p: No. genes
+    ## transl_rate_mu: Translation rate mean for lognormal distribution
+    ## deg_rate_mu: Protein degradation rate mean " " "
+    ## transl_rate_per_state: Generate a different translation rate for each cell state? 
+    ## topo: Required if transl_rate_per_state = True 
     
     np.random.seed(random_seed)
     
@@ -35,6 +41,7 @@ def get_protein_params(p, transl_rate_mu=5, transl_rate_sd=1, deg_rate_mu=.015, 
 def simulate_RNA(topo, tau, theta, n, rd_mu=None, rd_var=None, random_seed=0):
     ## Source: https://github.com/pachterlab/FGP_2024
     ## theta: RNA params
+    ## tau: State switching times
     ## n: No. cells
     ## p: No. genes
     ## rd_mu: Read depth mean for beta distribution
