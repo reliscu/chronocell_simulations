@@ -99,8 +99,8 @@ def simulate_protein_from_RNA(Y, topo, true_t, true_l, phi, random_seed=0):
     
     for l in range(L):
         t_l = true_t[true_l == l]
-        dt = np.diff(t_l, prepend=t_l[0])
-        t_l = true_t[true_l == l].reshape((-1, 1)) # Time points/cells in lineage l     
+        dt = np.diff(t_l, prepend=t_l[0]) # Time step size for each cell along the trajectory
+        t_l = t_l.reshape((-1, 1)) # Time points/cells in lineage l     
         y_l = Y[l*n:(l+1)*n, :, 1] # Spliced RNAs for lineage l
         
         p_l = p0 * np.exp(-deg_rate * t_l) # Pre-existing protein that has not yet degraded
@@ -111,7 +111,7 @@ def simulate_protein_from_RNA(Y, topo, true_t, true_l, phi, random_seed=0):
         mask = np.broadcast_to(mask, decay_matrix.shape)
         decay_matrix = np.where(mask, decay_matrix, 0) # Protein abundance at time t_m can't come from RNA at time t_i > t_m
         
-        y_l_dt = y_l * dt[:, None] 
+        y_l_dt = y_l * dt[:,None] # Multiply each timepoint's RNA by its corresponding time step size (Riemann approximation)
         protein_contrib = np.einsum('mip, ip -> mp', decay_matrix, y_l_dt) # Integrate RNA counts still surviving up to each time point
         P[l*n:(l+1)*n] = p_l + transl_rate * protein_contrib # Protein abundance in each cell = pre-existing protein + newly synthesized protein
     
