@@ -59,7 +59,7 @@ def simulate_RNA(topo, tau, theta, n, rd_mu=None, rd_var=None, random_seed=0):
     
     for l in range(L):
         theta_l = np.concatenate((theta[:,topo[l]], theta[:,-2:]), axis=1)
-        t = np.sort(np.random.uniform(tau[0], tau[-1], size=n)) # Each time point is a cell!
+        t = np.sort(np.random.uniform(tau[0], tau[-1], size=n)) # Each time point is a cell! # np.linspace(tau[0], tau[-1], n) # n
         Y[l*n:(l+1)*n] = get_Y(theta_l, t, tau) # Cells x genes x no. RNA species
         true_t = np.append(true_t, t)
         true_l = np.append(true_l, np.full(n, l))
@@ -98,6 +98,8 @@ def simulate_protein_from_RNA(Y, topo, true_t, true_l, phi, random_seed=0):
     P = np.zeros((n*L, p))
     
     for l in range(L):
+        t_l = true_t[true_l == l]
+        dt = np.diff(t_l, prepend=t_l[0])
         t_l = true_t[true_l == l].reshape((-1, 1)) # Time points/cells in lineage l     
         y_l = Y[l*n:(l+1)*n, :, 1] # Spliced RNAs for lineage l
         
@@ -109,7 +111,8 @@ def simulate_protein_from_RNA(Y, topo, true_t, true_l, phi, random_seed=0):
         mask = np.broadcast_to(mask, decay_matrix.shape)
         decay_matrix = np.where(mask, decay_matrix, 0) # Protein abundance at time t_m can't come from RNA at time t_i > t_m
         
-        protein_contrib = np.einsum('mip, ip -> mp', decay_matrix, y_l) # Integrate RNA counts still surviving up to each time point
+        y_l_dt = y_l * dt[:, None] 
+        protein_contrib = np.einsum('mip, ip -> mp', decay_matrix, y_l_dt) # Integrate RNA counts still surviving up to each time point
         P[l*n:(l+1)*n] = p_l + transl_rate * protein_contrib # Protein abundance in each cell = pre-existing protein + newly synthesized protein
     
     P_observed = np.random.poisson(P)
