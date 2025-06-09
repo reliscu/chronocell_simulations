@@ -79,7 +79,7 @@ def simulate_RNA(topo, tau, theta, n, rd_mu=None, rd_var=None, random_seed=0):
     return Y_observed, Y, theta, rd, true_t, true_l
 
 def simulate_protein_from_RNA(Y, topo, true_t, true_l, phi, random_seed=0):
-    ## phi: protein params
+    ## phi: Protein params
     
     np.random.seed(random_seed)
     
