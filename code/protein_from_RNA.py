@@ -1,13 +1,15 @@
 import numpy as np
 
-def get_RNA_params(topo, p, alpha_mu=2, alpha_sd=1, beta_mu=2, beta_sd=0.5, gamma_mu=0.5, gamma_sd=0.5, random_seed=0):
+def get_RNA_params(topo, p, alpha_mu=2, alpha_sd=1, 
+                   beta_mu=2, beta_sd=0.5, 
+                   gamma_mu=0.5, gamma_sd=0.5, random_seed=0):
     ## p: No. genes
     ## alpha_mu: Transcription rate mean for lognormal distribution
     ## beta_mu: Splicing rate mean " " "
     ## gamma_mu: RNA degradation rate mean " " "
     
     np.random.seed(random_seed)
-    
+
     n_states = len(set(topo.flatten()))
     theta = np.zeros((p, n_states + 2))
     theta[:,:n_states] = np.random.lognormal(alpha_mu, alpha_sd, size=(p, n_states))
@@ -17,7 +19,8 @@ def get_RNA_params(topo, p, alpha_mu=2, alpha_sd=1, beta_mu=2, beta_sd=0.5, gamm
     
     return theta
         
-def get_protein_params(p, transl_rate_mu=5, transl_rate_sd=1, deg_rate_mu=.015, deg_rate_sd=1.5, 
+def get_protein_params(p, transl_rate_mu=5, transl_rate_sd=1, 
+                       protein_deg_rate_mu=.015, protein_deg_rate_sd=1.5, 
                        transl_rate_per_state=False, topo=None, random_seed=0):
     ## p: No. genes
     ## transl_rate_mu: Translation rate mean for lognormal distribution
@@ -28,13 +31,15 @@ def get_protein_params(p, transl_rate_mu=5, transl_rate_sd=1, deg_rate_mu=.015, 
     np.random.seed(random_seed)
     
     if transl_rate_per_state:
+        # if rate_cor:
+        # Generate transl rates for each state that are correlated
         n_states = len(set(topo.flatten()))
     else:
         n_states = 1
         
     phi = np.zeros((p, n_states + 1))
     phi[:,:n_states] = np.random.lognormal(transl_rate_mu, transl_rate_sd, size=(p, n_states)) # Translation rate per gene
-    phi[:,-1] = np.random.lognormal(deg_rate_mu, deg_rate_sd, size=p) # Degradation rate per gene
+    phi[:,-1] = np.random.lognormal(protein_deg_rate_mu, protein_deg_rate_sd, size=p) # Degradation rate per gene
     
     return phi
 
