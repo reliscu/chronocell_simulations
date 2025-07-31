@@ -64,8 +64,8 @@ def simulate_RNA(topo, tau, theta, n, rd_mu=None, rd_var=None, random_seed=0):
     
     for l in range(L):
         theta_l = np.concatenate((theta[:,topo[l]], theta[:,-2:]), axis=1)
-        t = np.sort(np.random.uniform(tau[0], tau[-1], size=n)) # Each time point is a cell! # np.linspace(tau[0], tau[-1], n) # n
-        Y[l*n:(l+1)*n] = get_Y(theta_l, t, tau) # Cells x genes x no. RNA species
+        t = np.sort(np.random.uniform(tau[0], tau[-1], size=n)) # Each time point is a cell! 
+        Y[l*n:(l+1)*n] = get_Y(theta_l, t, tau) # Dims: cells x genes x no. RNA species
         true_t = np.append(true_t, t)
         true_l = np.append(true_l, np.full(n, l))
 
@@ -93,7 +93,7 @@ def simulate_protein_from_RNA(Y, topo, true_t, true_l, phi, random_seed=0):
     p = Y.shape[1] # No. genes
     
     y0 = Y[0, :, 1] # RNA levels at state 0
-    ss_rate = phi[:,0] / phi[:,-1] # Steady-state protein production rate
+    ss_rate = phi[:,0] / phi[:,-1] # Steady-state protein production rate = transl_rate/deg_rate
     p0 = ss_rate * y0 # Initial protein abundance assuming steady-state
     
     # Protein production paramters:
