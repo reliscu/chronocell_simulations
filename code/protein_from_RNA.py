@@ -12,10 +12,10 @@ def get_RNA_params(topo, p, alpha_mu=2, alpha_sd=1,
 
     n_states = len(set(topo.flatten()))
     theta = np.zeros((p, n_states + 2))
-    theta[:,:n_states] = np.random.lognormal(alpha_mu, alpha_sd, size=(p, n_states))
-    theta[:,-2] = np.random.lognormal(beta_mu, beta_sd, size=p)
-    theta[:,-1] = np.random.lognormal(gamma_mu, gamma_sd, size=p)
-    theta[:,:n_states] /= theta[:,-2, None] # Normalize transcription rates by splicing rate (get_Y() assumes a = alpha/beta)
+    theta[:, :n_states] = np.random.lognormal(alpha_mu, alpha_sd, size=(p, n_states))
+    theta[:, -2] = np.random.lognormal(beta_mu, beta_sd, size=p)
+    theta[:, -1] = np.random.lognormal(gamma_mu, gamma_sd, size=p)
+    theta[:, :n_states] /= theta[:, -2, None] # Normalize transcription rates by splicing rate (get_Y() assumes a = alpha/beta)
     
     return theta
         
@@ -63,7 +63,7 @@ def simulate_RNA(topo, tau, theta, n, rd_mu=None, rd_var=None, random_seed=0):
     true_l = []
     
     for l in range(L):
-        theta_l = np.concatenate((theta[:,topo[l]], theta[:,-2:]), axis=1)
+        theta_l = np.concatenate((theta[:, topo[l]], theta[:, -2:]), axis=1)
         t = np.sort(np.random.uniform(tau[0], tau[-1], size=n)) # Each time point is a cell! 
         Y[l*n:(l+1)*n] = get_Y(theta_l, t, tau) # Dims: cells x genes x no. RNA species
         true_t = np.append(true_t, t)
@@ -93,12 +93,12 @@ def simulate_protein_from_RNA(Y, topo, true_t, true_l, phi, random_seed=0):
     p = Y.shape[1] # No. genes
     
     y0 = Y[0, :, 1] # RNA levels at state 0
-    ss_rate = phi[:,0] / phi[:,-1] # Steady-state protein production rate = transl_rate/deg_rate
+    ss_rate = phi[:, 0] / phi[:, -1] # Steady-state protein production rate = transl_rate/deg_rate
     p0 = ss_rate * y0 # Initial protein abundance assuming steady-state
     
     # Protein production paramters:
-    transl_rate = phi[:,0].T
-    deg_rate = phi[:,-1].reshape((1, -1))
+    transl_rates = phi[:, 0].T
+    deg_rates = phi[:, -1].reshape((1, -1))
     
     P = np.zeros((n*L, p))
     
@@ -108,21 +108,135 @@ def simulate_protein_from_RNA(Y, topo, true_t, true_l, phi, random_seed=0):
         t_l = t_l.reshape((-1, 1)) # Time points/cells in lineage l     
         y_l = Y[l*n:(l+1)*n, :, 1] # Spliced RNAs for lineage l
         
-        p_l = p0 * np.exp(-deg_rate * t_l) # Pre-existing protein that has not yet degraded
+        p_l = p0 * np.exp(-deg_rates * t_l) # Pre-existing protein that has not yet degraded
 
         t_diff = t_l - t_l.T # Rows = target time; columns = past times; e.g. t_diff[m, i] = time difference between t_m and t_i 
-        decay_matrix = np.exp(-t_diff[:, :, None] * deg_rate) # Decay_matrix[m, i, p] = decay factor for protein abundance at t_m from RNA available at t_i for gene p
+        decay_matrix = np.exp(-t_diff[:, :, None] * deg_rates) # Decay_matrix[m, i, p] = decay factor for protein abundance at t_m from RNA available at t_i for gene p
         mask = (t_diff >= 0)[:, :, None]
         mask = np.broadcast_to(mask, decay_matrix.shape)
         decay_matrix = np.where(mask, decay_matrix, 0) # Protein abundance at time t_m can't come from RNA at time t_i > t_m
         
         y_l_dt = y_l * dt[:,None] # Multiply each timepoint's RNA by its corresponding time step size (Riemann approximation)
         protein_contrib = np.einsum('mip, ip -> mp', decay_matrix, y_l_dt) # Integrate RNA counts still surviving up to each time point
-        P[l*n:(l+1)*n] = p_l + transl_rate * protein_contrib # Protein abundance in each cell = pre-existing protein + newly synthesized protein
+        P[l*n:(l+1)*n] = p_l + transl_rates * protein_contrib # Protein abundance in each cell = pre-existing protein + newly synthesized protein
     
     P_observed = np.random.poisson(P)
         
     return P_observed, P
+
+def simulate_protein_from_RNA_transl_variance(Y, topo, true_t, true_l, phi, dispersion_factor=3, n_resamples=100, random_seed=0):
+    ## Goal: simulate impact of deviating from the true `translation_rate` for a given gene in estimating protein abundance
+    
+    ## phi: Protein params
+    ## dispersion_factor: Controls dispersion of the sampling distribution; a larger dispersion_factor = less dispersion
+    ## n_resamples: No. translation rate resamples
+    
+    np.random.seed(random_seed)
+
+    L = len(topo) # No. lineages
+    n = Y.shape[0] // L # No. cells per lineage
+    p = Y.shape[1] # No. genes
+
+    y0 = Y[0, :, 1] # RNA levels at state 0
+    ss_rate = phi[:,0] / phi[:,-1] # Steady-state protein production rate = transl_rate/deg_rate
+    p0 = ss_rate * y0 # Initial protein abundance assuming steady-state
+
+    deg_rates = phi[:, -1].reshape((1, -1))
+
+    # "True" translation rates per gene:
+    true_transl_rates = phi[:, 0, None]
+    
+    # Sampled translation rates per gene:
+    transl_rate_means = true_transl_rates
+    transl_rate_sds = np.sqrt(true_transl_rates / dispersion_factor)
+    sampled_transl_rates = np.random.normal(loc=transl_rate_means, scale=transl_rate_sds, size=(p, n_resamples))
+
+    P_transl_estimates = np.zeros((n_resamples, n*L, p))
+
+    for r in range(n_resamples):
+        P = np.zeros((n*L, p))
+        transl_rates = sampled_transl_rates[:, r]
+        
+        for l in range(L):
+            t_l = true_t[true_l == l]
+            dt = np.diff(t_l, prepend=t_l[0]) # Time step size for each cell along the trajectory
+            t_l = t_l.reshape((-1, 1)) # Time points/cells in lineage l     
+            y_l = Y[l*n:(l+1)*n, :, 1] # Spliced RNAs for lineage l
+            
+            p_l = p0 * np.exp(-deg_rates * t_l) # Pre-existing protein that has not yet degraded
+
+            t_diff = t_l - t_l.T # Rows = target time; columns = past times; e.g. t_diff[m, i] = time difference between t_m and t_i 
+            decay_matrix = np.exp(-t_diff[:, :, None] * deg_rates) # Decay_matrix[m, i, p] = decay factor for protein abundance at t_m from RNA available at t_i for gene p
+            mask = (t_diff >= 0)[:, :, None]
+            mask = np.broadcast_to(mask, decay_matrix.shape)
+            decay_matrix = np.where(mask, decay_matrix, 0) # Protein abundance at time t_m can't come from RNA at time t_i > t_m
+            
+            y_l_dt = y_l * dt[:,None] # Multiply each timepoint's RNA by its corresponding time step size (Riemann approximation)
+            protein_contrib = np.einsum('mip, ip -> mp', decay_matrix, y_l_dt) # Integrate RNA counts still surviving up to each time point
+            P[l*n:(l+1)*n] = p_l + transl_rates * protein_contrib # Protein abundance in each cell = pre-existing protein + newly synthesized protein
+
+        P_transl_estimates[r, :, :] = P
+           
+    P_transl_estimates_observed = np.random.poisson(P_transl_estimates)
+        
+    return P_transl_estimates_observed, P_transl_estimates, sampled_transl_rates
+
+def simulate_protein_from_RNA_deg_variance(Y, topo, true_t, true_l, phi, dispersion_factor=3, n_resamples=100, random_seed=0):
+    ## Goal: simulate impact of deviating from the true `translation_rate` for a given gene in estimating protein abundance
+    
+    ## phi: Protein params
+    ## dispersion_factor: Controls dispersion of the sampling distribution; a larger dispersion_factor = less dispersion
+    ## n_resamples: No. translation rate resamples
+    
+    np.random.seed(random_seed)
+
+    L = len(topo) # No. lineages
+    n = Y.shape[0] // L # No. cells per lineage
+    p = Y.shape[1] # No. genes
+
+    y0 = Y[0, :, 1] # RNA levels at state 0
+    ss_rate = phi[:,0] / phi[:,-1] # Steady-state protein production rate = transl_rate/deg_rate
+    p0 = ss_rate * y0 # Initial protein abundance assuming steady-state
+    
+    transl_rates = phi[:, 0].T
+    
+    # "True" protein degradation rates per gene:
+    true_deg_rates = phi[:, -1, None]
+
+    # Sampled protein degradation rates per gene:
+    deg_rate_means = true_deg_rates
+    deg_rate_sds = np.sqrt(true_deg_rates / dispersion_factor)
+    sampled_deg_rates = np.random.normal(loc=deg_rate_means, scale=deg_rate_sds, size=(p, n_resamples))
+
+    P_deg_estimates = np.zeros((n_resamples, n*L, p))
+
+    for r in range(n_resamples):
+        P = np.zeros((n*L, p))
+        deg_rates = sampled_deg_rates[:, r].reshape((1, -1))
+        
+        for l in range(L):
+            t_l = true_t[true_l == l]
+            dt = np.diff(t_l, prepend=t_l[0]) # Time step size for each cell along the trajectory
+            t_l = t_l.reshape((-1, 1)) # Time points/cells in lineage l     
+            y_l = Y[l*n:(l+1)*n, :, 1] # Spliced RNAs for lineage l
+            
+            p_l = p0 * np.exp(-deg_rates * t_l) # Pre-existing protein that has not yet degraded
+
+            t_diff = t_l - t_l.T # Rows = target time; columns = past times; e.g. t_diff[m, i] = time difference between t_m and t_i 
+            decay_matrix = np.exp(-t_diff[:, :, None] * deg_rates) # Decay_matrix[m, i, p] = decay factor for protein abundance at t_m from RNA available at t_i for gene p
+            mask = (t_diff >= 0)[:, :, None]
+            mask = np.broadcast_to(mask, decay_matrix.shape)
+            decay_matrix = np.where(mask, decay_matrix, 0) # Protein abundance at time t_m can't come from RNA at time t_i > t_m
+            
+            y_l_dt = y_l * dt[:,None] # Multiply each timepoint's RNA by its corresponding time step size (Riemann approximation)
+            protein_contrib = np.einsum('mip, ip -> mp', decay_matrix, y_l_dt) # Integrate RNA counts still surviving up to each time point
+            P[l*n:(l+1)*n] = p_l + transl_rates * protein_contrib # Protein abundance in each cell = pre-existing protein + newly synthesized protein
+
+        P_deg_estimates[r, :, :] = P
+           
+    P_deg_estimates_observed = np.random.poisson(P_deg_estimates)
+        
+    return P_deg_estimates_observed, P_deg_estimates, sampled_deg_rates
 
 def get_Y(theta, t, tau):
     ## Source: https://github.com/pachterlab/FGP_2024
