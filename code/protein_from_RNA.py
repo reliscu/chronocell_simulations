@@ -176,7 +176,6 @@ def simulate_protein_transl_rate_sensitivity(Y, topo, true_t, true_l, phi, dispe
         decay_matrix = np.where(mask, decay_matrix, 0) # Protein abundance at time t_m can't come from RNA at time t_i > t_m
         
         for r in range(n_resamples):
-            
             transl_rates = sampled_transl_rates[:, r] 
             protein_contrib = (decay_matrix * y_l_dt[None, :, :]).sum(axis=1) # Integrate RNA counts still surviving up to each time point
             P_sampled_transl[r, l*n:(l+1)*n] = p_l + transl_rates * protein_contrib # Protein abundance in each cell = pre-existing protein + newly synthesized protei
@@ -211,7 +210,7 @@ def simulate_protein_deg_rate_sensitivity(Y, topo, true_t, true_l, phi, dispersi
     target_vars = true_deg_rates / dispersion_factor
     target_mus = true_deg_rates 
     deg_rate_vars = np.log(1 + target_vars / target_mus**2)
-    deg_rate_mus = np.log(target_mus) - 0.5 * transl_rate_vars
+    deg_rate_mus = np.log(target_mus) - 0.5 * deg_rate_vars
     sampled_deg_rates = np.random.lognormal(mean=deg_rate_mus, 
                                             sigma=np.sqrt(deg_rate_vars), 
                                             size=(p, n_resamples))
