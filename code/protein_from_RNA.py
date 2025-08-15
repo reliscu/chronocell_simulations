@@ -149,13 +149,16 @@ def simulate_protein_transl_rate_sensitivity(Y, topo, true_t, true_l, phi, dispe
     # "True" translation rates per gene:
     true_transl_rates = phi[:, 0, None]
     
-    # Sampled translation rates per gene:
-    transl_rate_means = true_transl_rates
-    transl_rate_sds = true_transl_rates / dispersion_factor
-    sampled_transl_rates = np.random.normal(loc=transl_rate_means, scale=transl_rate_sds, size=(p, n_resamples))
-    sampled_transl_rates = np.maximum(sampled_transl_rates, 0.0) # Translation rates can't be negative 
+    # Sample translation rates per gene:
+    target_vars = (true_transl_rates / dispersion_factor)**2
+    target_mus = true_transl_rates 
+    transl_rate_vars = np.log(1 + target_vars / target_mus**2)
+    transl_rate_mus = np.log(target_mus) - 0.5 * transl_rate_vars
+    sampled_transl_rates = np.random.lognormal(mean=transl_rate_mus, 
+                                               sigma=np.sqrt(transl_rate_vars), 
+                                               size=(p, n_resamples))
     
-    P_transl_sampled = np.zeros((n_resamples, n*L, p))
+    P_sampled_transl = np.zeros((n_resamples, n*L, p))
     
     for l in range(L):
         
@@ -176,11 +179,11 @@ def simulate_protein_transl_rate_sensitivity(Y, topo, true_t, true_l, phi, dispe
             
             transl_rates = sampled_transl_rates[:, r] 
             protein_contrib = (decay_matrix * y_l_dt[None, :, :]).sum(axis=1) # Integrate RNA counts still surviving up to each time point
-            P_transl_sampled[r, l*n:(l+1)*n] = p_l + transl_rates * protein_contrib # Protein abundance in each cell = pre-existing protein + newly synthesized protei
+            P_sampled_transl[r, l*n:(l+1)*n] = p_l + transl_rates * protein_contrib # Protein abundance in each cell = pre-existing protein + newly synthesized protei
         
-    P_transl_sampled_observed = np.random.poisson(P_transl_sampled, )
+    P_sampled_transl_observed = np.random.poisson(P_sampled_transl)
         
-    return P_transl_sampled_observed, P_transl_sampled, sampled_transl_rates
+    return P_sampled_transl_observed, P_sampled_transl, sampled_transl_rates
 
 def simulate_protein_deg_rate_sensitivity(Y, topo, true_t, true_l, phi, dispersion_factor=3, n_resamples=100, random_seed=0):
     ## Goal: simulate impact of deviating from the true `translation_rate` for a given gene in estimating protein abundance
@@ -205,12 +208,15 @@ def simulate_protein_deg_rate_sensitivity(Y, topo, true_t, true_l, phi, dispersi
     true_deg_rates = phi[:, -1, None]
 
     # Sampled protein degradation rates per gene:
-    deg_rate_means = true_deg_rates
-    deg_rate_sds = np.sqrt(true_deg_rates / dispersion_factor)
-    sampled_deg_rates = np.random.normal(loc=deg_rate_means, scale=deg_rate_sds, size=(p, n_resamples))
-    sampled_deg_rates = np.maximum(sampled_deg_rates, 0.0) # Degradation rates can't be negative 
+    target_vars = true_deg_rates / dispersion_factor
+    target_mus = true_deg_rates 
+    deg_rate_vars = np.log(1 + target_vars / target_mus**2)
+    deg_rate_mus = np.log(target_mus) - 0.5 * transl_rate_vars
+    sampled_deg_rates = np.random.lognormal(mean=deg_rate_mus, 
+                                            sigma=np.sqrt(deg_rate_vars), 
+                                            size=(p, n_resamples))
     
-    P_deg_sampled = np.zeros((n_resamples, n*L, p))
+    P_sampled_deg = np.zeros((n_resamples, n*L, p))
         
     for l in range(L):
         
@@ -232,11 +238,11 @@ def simulate_protein_deg_rate_sensitivity(Y, topo, true_t, true_l, phi, dispersi
             decay_matrix = np.where(mask, decay_matrix, 0) # Protein abundance at time t_m can't come from RNA at time t_i > t_m
             
             protein_contrib = (decay_matrix * y_l_dt[None, :, :]).sum(axis=1) # Integrate RNA counts still surviving at each time point
-            P_deg_sampled[r, l*n:(l+1)*n] = p_l + transl_rates * protein_contrib # Protein abundance in each cell = pre-existing protein + newly synthesized protein
+            P_sampled_deg[r, l*n:(l+1)*n] = p_l + transl_rates * protein_contrib # Protein abundance in each cell = pre-existing protein + newly synthesized protein
 
-    P_deg_sampled_observed = np.random.poisson(P_deg_sampled)
+    P_sampled_deg_observed = np.random.poisson(P_sampled_deg)
         
-    return P_deg_sampled_observed, P_deg_sampled, sampled_deg_rates
+    return P_sampled_deg_observed, P_sampled_deg, sampled_deg_rates
 
 def get_Y(theta, t, tau):
     ## Source: https://github.com/pachterlab/FGP_2024
