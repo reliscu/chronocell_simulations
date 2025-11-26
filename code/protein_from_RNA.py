@@ -15,7 +15,7 @@ def get_RNA_params(topo, p, alpha_mu=2, alpha_sd=1,
     theta[:, :n_states] = np.random.lognormal(alpha_mu, alpha_sd, size=(p, n_states))
     theta[:, -2] = np.random.lognormal(beta_mu, beta_sd, size=p)
     theta[:, -1] = np.random.lognormal(gamma_mu, gamma_sd, size=p)
-    theta[:, :n_states] /= theta[:, -2, None] # Normalize transcription rates by splicing rate (get_Y() assumes a = alpha/beta)
+    theta[:, :n_states] /= theta[:, -2, None] # Return transcription rates normalized by splicing rate (get_Y() assumes a = alpha/beta)
     
     return theta
         
@@ -31,8 +31,7 @@ def get_protein_params(p, transl_rate_mu=5, transl_rate_sd=1,
     np.random.seed(random_seed)
     
     if transl_rate_per_state:
-        # if rate_cor:
-        # Generate transl rates for each state that are correlated
+        # if correlated_rates: # Generate transl rates that are correlated with transcription rates
         n_states = len(set(topo.flatten()))
     else:
         n_states = 1
@@ -92,7 +91,7 @@ def simulate_protein_from_RNA(Y, topo, true_t, true_l, phi, random_seed=0):
     n = Y.shape[0] // L # No. cells per lineage
     p = Y.shape[1] # No. genes
     
-    y0 = Y[0, :, 1] # RNA levels at state 0
+    y0 = Y[0, :, 1] # RNA abundance per gene at state 0
     ss_rate = phi[:, 0] / phi[:, -1] # Steady-state protein production rate = transl_rate/deg_rate
     p0 = ss_rate * y0 # Initial protein abundance assuming steady-state
     
@@ -128,11 +127,11 @@ def simulate_protein_from_RNA(Y, topo, true_t, true_l, phi, random_seed=0):
     return P_observed, P
 
 def simulate_protein_transl_rate_sensitivity(Y, topo, true_t, true_l, phi, dispersion_factor=3, n_resamples=100, random_seed=0):
-    ## Goal: simulate impact of deviating from the true `translation_rate` for a given gene in estimating protein abundance
+    ## Goal: simulate impact of deviating from the true `translation_rate` when estimating protein abundance
     
     ## phi: Protein params
     ## dispersion_factor: Controls dispersion of the sampling distribution; a larger dispersion_factor = less dispersion
-    ## n_resamples: No. translation rate resamples
+    ## n_resamples: No. resamples of translation rate
     
     np.random.seed(random_seed)
 
@@ -189,7 +188,7 @@ def simulate_protein_deg_rate_sensitivity(Y, topo, true_t, true_l, phi, dispersi
     
     ## phi: Protein params
     ## dispersion_factor: Controls dispersion of the sampling distribution; a larger dispersion_factor = less dispersion
-    ## n_resamples: No. translation rate resamples
+    ## n_resamples: No. resamples of degradation rate
     
     np.random.seed(random_seed)
 
@@ -197,7 +196,7 @@ def simulate_protein_deg_rate_sensitivity(Y, topo, true_t, true_l, phi, dispersi
     n = Y.shape[0] // L # No. cells per lineage
     p = Y.shape[1] # No. genes
 
-    y0 = Y[0, :, 1] # RNA levels at state 0
+    y0 = Y[0, :, 1] # RNA abundance per gene at state 0
     ss_rate = phi[:,0] / phi[:,-1] # Steady-state protein production rate = transl_rate/deg_rate
     p0 = ss_rate * y0 # Initial protein abundance assuming steady-state
     
@@ -261,29 +260,41 @@ def get_Y(theta, t, tau):
     beta = theta[:,-2].reshape((1,-1))
     gamma = theta[:,-1].reshape((1,-1))
 
-    y1_0 = theta[:,0].reshape((1,-1))
+    y1_0 = theta[:,0].reshape((1,-1)) # Starting "steady-state" RNA abundance
 
     c = beta/(beta-gamma+eps)
     d = beta**2/((beta-gamma)*gamma+eps)
     y_0 = d*y1_0
-    a_ = d*a
+    a_ = d*a # Splicing rate gets multiplied out (so rest of states are not at steady-state)
     t = t.reshape(-1,1)
     m = len(t)
   
     I = np.ones((K+1,m),dtype=bool)
 
     # nascent
-    y1=y1_0*np.exp(-t@beta)
+    y1 = y1_0 * np.exp(-t@beta) # Starting abundance of unspliced RNA at state 0 (steady-state RNA levels that have not yet degraded)
     for k in range(1,K+1):
         I[k] = np.squeeze(t > tau[k])
-        idx =I[k-1]*(~I[k]) # tau_{k-1} < t_i <= tau_k
-        y1 = y1 + a[None,k-1] * (np.exp(- (I[k,:,None] *(t-tau[k]))@beta)- np.exp(-(I[k,:,None]*(t-tau[k-1]))@beta )) \
-          + a[None,k-1] * (1 - np.exp(- (idx[:,None] *(t-tau[k-1]))@beta ) )
+        idx = I[k-1]*(~I[k]) # tau_{k-1} < t_i <= tau_k
+        y1 = y1 + a[None, k-1] * (np.exp(-(I[k, :, None] * (t-tau[k]))@beta) - np.exp(-(I[k, :, None]*(t-tau[k-1]))@beta)) \
+                + a[None, k-1] * (1 - np.exp(-(idx[:,None] * (t-tau[k-1]))@beta))
+        # First line: all cells at t > tau_k
+            # E.g. tau_k = 2 hours
+            # All time points > 2 hours
+        # Second line: all cells at t > t_k-1 and t <= tau_k
+            # E.g. tau_k-1 = 1 hour
+            # All time points > 1 hour and <= than 2 hours
+            # 
+        # First line
+        #             [2 hr, end)
+        # 2nd line:
+        # [1 hr, 2 hr)
     
     if np.sum(np.isnan(y1)) != 0:
         raise ValueError("Nan in y1")
+    
     # mature + c * nascent 
-    y=y_0*np.exp(-t@gamma)    
+    y = y_0 * np.exp(-t@gamma) 
     for k in range(1,K+1):
         idx =I[k-1]*(~I[k]) # tau_{k-1} < t_i <= tau_k
         y = y + a_[None,k-1] * (np.exp(-(I[k,:,None] * (t-tau[k]))@gamma)- np.exp(-(I[k,:,None] * (t-tau[k-1]))@gamma )) \
