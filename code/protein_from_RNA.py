@@ -84,7 +84,6 @@ def simulate_RNA(topo, tau, theta, n, rd_mu=None, rd_var=None, random_seed=0):
 
 def simulate_protein_from_RNA(Y, topo, true_t, true_l, phi, random_seed=0):
     ## phi: Protein params
-    
     np.random.seed(random_seed)
     
     L = len(topo) # No. lineages
@@ -102,7 +101,6 @@ def simulate_protein_from_RNA(Y, topo, true_t, true_l, phi, random_seed=0):
     P = np.zeros((n*L, p))
     
     for l in range(L):
-        
         t_l = true_t[true_l == l] # Time points/cells in lineage l     
         dt = np.diff(t_l, prepend=t_l[0]) # Time step size for each cell along the trajectory
         t_l = t_l.reshape((-1, 1)) 
@@ -160,7 +158,6 @@ def simulate_protein_transl_rate_sensitivity(Y, topo, true_t, true_l, phi, dispe
     P_sampled_transl = np.zeros((n_resamples, n*L, p))
     
     for l in range(L):
-        
         t_l = true_t[true_l == l] # Time points/cells in lineage l     
         dt = np.diff(t_l, prepend=t_l[0]) # Time step size for each cell along the trajectory
         t_l = t_l.reshape((-1, 1)) 
@@ -217,7 +214,6 @@ def simulate_protein_deg_rate_sensitivity(Y, topo, true_t, true_l, phi, dispersi
     P_sampled_deg = np.zeros((n_resamples, n*L, p))
         
     for l in range(L):
-        
         t_l = true_t[true_l == l] # Time points/cells in lineage l     
         dt = np.diff(t_l, prepend=t_l[0]) # Time step size for each cell along the trajectory
         t_l = t_l.reshape((-1, 1)) 
