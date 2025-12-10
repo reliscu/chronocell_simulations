@@ -47,12 +47,14 @@ def simulate_RNA(topo, tau, theta, n, rd_mu=None, rd_var=None, random_seed=0):
     ## theta: RNA params
     ## tau: State switching times
     ## n: No. cells
-    ## p: No. genes
     ## rd_mu: Read depth mean for beta distribution
     ## rd_var: Read depth variance for beta distribution
     
     np.random.seed(random_seed)
-    
+
+    if theta.ndim == 1:
+        theta = theta[None, :]
+        
     n_states = len(set(topo.flatten()))
     p = len(theta) # No. genes
     L = len(topo) # No. lineages
@@ -60,10 +62,10 @@ def simulate_RNA(topo, tau, theta, n, rd_mu=None, rd_var=None, random_seed=0):
     Y = np.zeros((n*L, p, 2))
     true_t = []
     true_l = []
-    
+        
     for l in range(L):
         theta_l = np.concatenate((theta[:, topo[l]], theta[:, -2:]), axis=1)
-        t = np.sort(np.random.uniform(tau[0], tau[-1], size=n)) # Each time point is a cell! 
+        t = np.linspace(tau[0], tau[-1], n) # Each time point is a cell! 
         Y[l*n:(l+1)*n] = get_Y(theta_l, t, tau) # Dims: cells x genes x no. RNA species
         true_t = np.append(true_t, t)
         true_l = np.append(true_l, np.full(n, l))
@@ -76,7 +78,7 @@ def simulate_RNA(topo, tau, theta, n, rd_mu=None, rd_var=None, random_seed=0):
         rd_mu = 1
         rd = np.ones(n*L)
     
-    theta[:,:n_states] *= rd_mu 
+    theta[:, :n_states] *= rd_mu 
     Y = rd[:, None, None]*Y
     Y_observed = np.random.poisson(Y)
     
