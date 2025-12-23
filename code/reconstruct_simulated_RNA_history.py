@@ -80,9 +80,8 @@ def reverse_generator(A, mu):
     ## https://www.randomservices.org/random/markov/TimeReversal2.html
     ## https://link.springer.com/book/10.1007/978-1-4612-3038-0 (p. 239)
 
-    diag_mu = np.diag(mu)
-    diag_inv_mu = np.diag(1.0/mu)
-    A_rev_off = diag_inv_mu @ A.T @ diag_mu
+    mu_safe = np.maximum(mu, 1e-12)
+    A_rev_off = (A.T * mu_safe) / mu_safe[:, None]   # uses broadcasting, no diag matrices
     np.fill_diagonal(A_rev_off, 0.0)
     A_rev = A_rev_off.copy()
     A_rev[np.diag_indices_from(A_rev)] = -A_rev_off.sum(axis=1) # Diagonals must be -sum(row)
@@ -490,56 +489,67 @@ def backward_distribution_sparse_to_dense(Y, states, index_for, t, tau, state_gr
     return X_bw
 
 
-################################################################################
+################################################################################################
 
-# def stationary_from_transition_matrix(A): 
-#     w, v = np.linalg.eig(A.T)
-#     idx = np.argmin(np.abs(w)) # Eigenvector corresponding to eigenvalue closest to 0
-#     pi = np.real(v[:, idx])
-#     if pi.sum() < 0:
-#         pi = -pi
-#     pi[pi < 0] = 0.0
-#     pi /= pi.sum()
-#     return pi
-
-
-# def backward_distribution(Y, X_bw, states, t, tau, state_grid):
-#     global A_gene, X_fwd_gene
-
-#     # For each time step, calculate previous state using current state
-
-#     for k in reversed(range(1, len(t))):
-#         t_prev, t_curr = t[k-1], t[k]
-#         state_prev, state_curr = state_grid[k-1], state_grid[k]
-#         x_curr = X_bw[:, k]
-            
-#         if state_prev == state_curr:
-#             dt = t_curr - t_prev
-#             M_rev = get_expm_rev(state_curr, k, dt)
-#             x_prev = x_curr @ M_rev
+def euler_forward(Y, W, b, t, tau, state_grid):
+    # Initialize backwards trajectory with observed counts
+    X_fwd = np.zeros(shape=(len(t), 2), dtype="float")
+    X_fwd[0, :] = np.array([Y[0, :, 0], Y[0, :, 1]]).T
+    
+    for k in range(len(t)):
+        t_curr, t_next = t[k], t[k+1]
+        state_curr, state_next = state_grid[k], state_grid[k+1]
+        X_curr = X_fwd[:, 0]
         
-#         else:
-#             # State switch happens in current interval             
-#             t_s = tau[state_curr]
-
-#             # Split backward march into 2 steps
-#             dt2 = t_curr - t_s # right interval: (state_switch_time, t_k]
-#             M2_rev = get_expm_rev(state_curr, k, dt2)
-#             x_mid = x_curr @ M2_rev 
+        if state_curr == state_next:
+            dt = t_next - t_curr
+            X_next = X_curr + dt * ((W @ X_curr) + b[state_curr][:, None])
             
-#             dt1 = t_s - t_prev # left interval: (t_{k-1}, state_switch_time]
-#             M1_rev = get_expm_rev(state_prev, k, dt1)
-#             x_prev = x_mid @ M1_rev  
+        else:   
+            # State switch happens in current interval
+            t_s = tau[state_next]
 
-#         X_bw[:, k-1] = x_prev
+            # Split forward march into 2 steps
+            dt1 = t_s - t_curr # left interval: [t_k, state_switch_time)
+            X_mid = X_curr + dt1 * ((W @ X_curr) + b[state_curr][:, None])
         
-#         ###########################################################################
+            dt2 = t_next - t_s # right interval: [state_switch_time, t_{k+1})
+            X_next = X_mid + dt2 * ((W @ X_mid) + b[state_next][:, None])
+            
+        X_fwd[:, k+1] = X_next
+        
+        
+def euler_backward(Y, Q, W, b, t, tau, state_grid):
+    U_curr, S_curr = np.round(Y[:, 0]), np.round(Y[:, 1])
+    
+    X_bw = np.zeros(shape=(len(t), 2, Y.shape[0])) 
+    X_bw[:, :, ]
+    
+    # Start backwards trajectory at cell's inferred position in time
+    t_obs = np.asarray([np.searchsorted(t, i) for i in t])
+     
+    for k in reversed(1, range(len(t))):
+        t_prev, t_curr = t[k-1], t[k]
+        state_prev, state_curr = state_grid[k-1], state_grid[k]
        
-#         print("Jump backwards from t =", np.round(t_curr, 3), "to t =", np.round(t_prev, 3), ":")
-#         print("Highest probability state (# unspliced, spliced):", states[np.argmax(x_curr)])
-#         idx = np.searchsorted(t, t_prev)
-#         print("Simulated (# unspliced, spliced):", np.round(Y[idx, :, 0], 2), np.round(Y[idx, :, 1], 2))
-#         print("Sum X(t_k) =", np.sum(x_curr))
-#         print("-------") 
+        # Only calculate backwards trajectory for cells at t = t[k] or later
+        mask = t_obs >= k
+        X_curr_block = X_fwd[:, mask] 
+
+        if state_prev == state_curr:
+            dt = t_curr - t_prev
+            X_prev = X_curr_block + dt * ((W @ X_curr_block) + b[state_curr][:, None])
+            
+        else:  
+            # State switch happens in current interval             
+            t_s = tau[state_curr]
+
+            # Split backward march into 2 steps
+            dt2 = t_curr - t_s # right interval: (state_switch_time, t_k]
+            X_mid = X_curr_block - dt2 * ((W @ X_curr_block) + b[state_curr][:, None])
         
-#     return X_bw
+            dt1 = t_s - t_prev # left interval: (t_{k-1}, state_switch_time]
+            X_prev = X_mid - dt1 * ((W @ X_mid) + b[state_prev][:, None])
+            
+        X_bw[:, k, mask] = X_curr_block
+        X_curr[:, mask] = X_prev
