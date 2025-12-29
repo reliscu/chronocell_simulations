@@ -521,10 +521,10 @@ def euler_forward(Y, W, b, t, tau, state_grid):
         
 def euler_backward(Y, Q, W, b, t, tau, state_grid):
     U_curr, S_curr = np.round(Y[:, 0]), np.round(Y[:, 1])
-    
+    X_curr = np.array([U_curr, S_curr]).T
+     
     X_bw = np.zeros(shape=(len(t), 2, Y.shape[0])) 
-    X_bw[:, :, ]
-    
+ 
     # Start backwards trajectory at cell's inferred position in time
     t_obs = np.asarray([np.searchsorted(t, i) for i in t])
      
