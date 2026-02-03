@@ -104,7 +104,7 @@ def simulate_protein_from_RNA(Y, topo, true_t, true_l, phi, random_seed=0):
     
     for l in range(L):
         t_l = true_t[true_l == l] # Time points/cells in lineage l     
-        dt = np.diff(t_l, prepend=t_l[0]) # Time step size for each cell along the trajectory
+        dt = np.diff(t_l, prepend=-t_l[1]) # Time step size for each cell along the trajectory
         t_l = t_l.reshape((-1, 1)) 
         y_l = Y[l*n:(l+1)*n, :, 1] # Spliced RNAs for lineage l
         
